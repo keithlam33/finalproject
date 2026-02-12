@@ -1,0 +1,13 @@
+jupyterlab
+numpy
+pandas
+matplotlib
+sqlalchemy
+psycopg2-binary
+requests
+yfinance
+apscheduler
+python-dotenv
+# optional
+pandas_market_calendars
+alembic

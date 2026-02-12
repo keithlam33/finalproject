@@ -1,0 +1,21 @@
+spring:
+  datasource:
+    driver-class-name: org.postgresql.Driver
+    url: "jdbc:postgresql://postgres-container:5432/bootcamp_2512"
+    username: "postgres"
+    password: "admin1234"
+  jpa:
+    show-sql: true
+    hibernate:
+      ddl-auto: update
+    properties:
+      dialect: org.hibernate.dialect.PostgreSQLDialect
+
+stock-api:
+  finnhub:
+    domain: https://finnhub.io
+    path:
+      profile: "/api/v1/stock/profile2"
+      
+  key: d65fkg9r01qlmj2v19r0d65fkg9r01qlmj2v19rg
+
