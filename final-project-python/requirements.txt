@@ -8,6 +8,8 @@ requests
 yfinance
 apscheduler
 python-dotenv
+lxml
 # optional
 pandas_market_calendars
 alembic
+ipykernel

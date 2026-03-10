@@ -1,0 +1,31 @@
+server:
+  port: 8091
+
+spring:
+  application:
+    name: project-stock-data
+  datasource:
+    url: jdbc:postgresql://postgres-container:5432/bootcamp_2512
+    username: postgres
+    password: admin1234
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    show-sql: true
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  data:
+    redis:
+      host: redis-container
+      port: 6379
+
+data-provider:
+  scheme: http
+  host: data-provider-app
+  port: 8090
+  uri:
+    quote: /quote
+    company: /company
+    companies: /companies

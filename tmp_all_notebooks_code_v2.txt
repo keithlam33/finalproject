@@ -1,0 +1,851 @@
+================================================================================
+_1_schema.ipynb
+================================================================================
+--- cell 0 ---
+# DB schema：主表 stock_data + archive table（不含 source/extra/fetch_log）
+from sqlalchemy import (
+    create_engine, MetaData, Table, Column, String, DateTime, Float, BigInteger, UniqueConstraint, Text
+)
+from sqlalchemy.engine import Engine
+
+DB_URL = "postgresql+psycopg2://postgres:admin1234@localhost:5432/bootcamp_2512"
+
+
+def get_engine() -> Engine:
+    """回傳 SQLAlchemy engine"""
+    return create_engine(DB_URL, pool_pre_ping=True)
+
+
+def get_stock_ohlc_table(engine: Engine):
+    """建立或回傳主表 stock_data（id 自增 + unique constraint）"""
+    metadata = MetaData() # 建立一個 metadata 容器，等下 Table 會掛在這上面
+    table = Table(
+        "stock_ohlc",
+        metadata,
+        Column("id", BigInteger, primary_key=True, autoincrement=True),
+        Column("symbol", String, nullable=False),
+        Column("data_type", String, nullable=False),  # '1d','1m','5m',...
+        Column("ts", BigInteger, nullable=False),  # timestamp in seconds
+        Column("open", Float, nullable=True),
+        Column("high", Float, nullable=True),
+        Column("low", Float, nullable=True),
+        Column("close", Float, nullable=True),
+        Column("volume", BigInteger, nullable=True),
+        Column("date_update", DateTime),
+        UniqueConstraint("symbol", "data_type", "ts", name="uq_symbol_datatype_ts"),
+    )
+    metadata.create_all(engine) # 這行會「真的去資料庫」建立表（如果不存在才建）。
+    return table
+
+def get_stock_profile_table(engine):
+    metadata = MetaData()
+    table = Table(
+        "stock_profile", metadata,
+        Column("symbol", String, primary_key=True),
+        Column("company_name", String),
+        Column("industry", String),
+        Column("market_cap", Float),
+        Column("logo", Text),
+        Column("date_update", DateTime),
+    )
+    metadata.create_all(engine) # 這行會「真的去資料庫」建立表（如果不存在才建）。
+    return table
+
+def get_intraday_archive_table(engine: Engine):
+    """建立或回傳 archive table（也加 unique constraint）"""
+    metadata = MetaData()
+    table = Table(
+        "stock_intraday_archive",
+        metadata,
+        Column("id", BigInteger, primary_key=True, autoincrement=True),
+        Column("symbol", String, nullable=False),
+        Column("data_type", String, nullable=False),
+        Column("ts", BigInteger, nullable=False),
+        Column("open", Float, nullable=True),
+        Column("high", Float, nullable=True),
+        Column("low", Float, nullable=True),
+        Column("close", Float, nullable=True),
+        Column("volume", BigInteger, nullable=True),
+        Column("date_update", DateTime),
+        UniqueConstraint("symbol", "data_type", "ts", name="uq_symbol_datatype_ts_archive"),
+    )
+    metadata.create_all(engine)
+    return table
+================================================================================
+_2_get_symbols.ipynb
+================================================================================
+--- cell 0 ---
+import io
+import pandas as pd
+import requests
+import datetime
+from typing import List
+from sqlalchemy import select, update, Table, Column, MetaData, Boolean, String, DateTime
+%run _1_schema.ipynb
+
+SP500_URL = "https://stockanalysis.com/list/sp-500-stocks/"
+SP500_WIKI = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+
+def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame: 
+    # read_html sometimes returns tuple columns; flatten them into strings
+    out = df.copy()
+    cols: list[str] = [] #empty list
+    for c in out.columns:
+        if isinstance(c, tuple): # c 係咪 tuple 呢種型別 like instanceof
+            c = " ".join(str(x) for x in c if x and str(x).lower() != "nan") # nan = not a number in pandas/numpy
+            # " ".join() means 用 空格將多個字串合併 "market", "cap" -> market cap (string method)
+        cols.append(str(c).strip())
+    out.columns = cols
+    return out
+
+def pick_table_by_columns(tables: list[pd.DataFrame], required_cols: set[str]) -> pd.DataFrame:
+    required_cols = set(required_cols)
+    for df in tables:
+        dfn = _normalize_columns(df)
+        if required_cols.issubset(set(dfn.columns)): # issubset 意思係：「required_cols 入面每個欄位都喺 df.columns 裏面」
+            return dfn
+    # helpful error for debugging when website changes
+    available = [list(_normalize_columns(df).columns) for df in tables] # list all tables columns, to see what changes
+    raise ValueError(f"Cannot find table with columns {sorted(required_cols)}. Available columns: {available}")
+
+def get_sp500_symbols_from_web() -> List[str]:
+    """先試 stockanalysis，失敗就 fallback Wikipedia"""
+    headers = {"User-Agent": "Mozilla/5.0"}
+    try:
+        resp = requests.get(SP500_URL, headers=headers, timeout=15) # if 15 seconds coudn't get data, return error
+        resp.raise_for_status() # 如果 HTTP 狀態碼是 4xx/5xx 會丟例外（讓 try 失敗）
+        tables = pd.read_html(io.StringIO(resp.text)) # 把「字串包裝成一個像檔案的物件（file-like object）」can directly pd.read_html(resp.text)
+        df_sp500 = pick_table_by_columns(tables, {"Symbol"})
+        return df_sp500["Symbol"].tolist() # if no raise or error then return and end the function 
+    except Exception as e:
+        print(f"[WARN] StockAnalysis failed, fallback to Wikipedia. error={e}") # if use raise = whole function failed, print so goes to wiki part
+
+    tables = pd.read_html(SP500_WIKI)
+    df_sp500 = tables[0]
+    if "Symbol" not in df_sp500.columns:
+        raise ValueError("Symbol column not found in Wikipedia table")
+    return df_sp500["Symbol"].tolist()
+
+def get_sp500_table_from_web():
+    """抓 S&P500 full table（含 Market Cap）"""
+    headers = {"User-Agent": "Mozilla/5.0"}
+    resp = requests.get(SP500_URL, headers=headers, timeout=15)
+    resp.raise_for_status()
+    tables = pd.read_html(io.StringIO(resp.text))
+    df_sp500 = pick_table_by_columns(tables, {"Symbol"})
+    return df_sp500
+
+def get_symbols_table(engine):
+    """建立 stocks table（若不存在）"""
+    metadata = MetaData()
+    table = Table(
+        "stocks", metadata,
+        Column("symbol", String, primary_key=True),
+        Column("status", Boolean, nullable=False),
+        Column("date_added", DateTime),
+        Column("date_removed", DateTime),
+    )
+    metadata.create_all(engine)
+    return table
+
+def update_symbols():
+    """
+    同步 S&P500（每日跑一次），直接使用網站回傳的 symbol
+    若網站失敗 -> 使用 DB 現有 symbols
+    """
+    engine = get_engine()
+    table = get_symbols_table(engine)
+    today = datetime.date.today()
+
+    try:
+        raw_symbols = get_sp500_symbols_from_web()
+        canonical_set = set(raw_symbols)
+    except Exception as e:
+        print(f"[WARN] Failed to fetch symbols from web, using DB cache. error={e}")
+        with engine.connect() as conn: # 讀 DB 現有 symbols 當備援
+            rows = conn.execute(select(table.c.symbol)).fetchall()
+        canonical_set = {r[0] for r in rows} # {} -> set if not K:V inside {}
+
+    with engine.begin() as conn: # 開一個 transaction（交易）；區塊成功自動 commit，出錯自動 rollback。
+        rows = conn.execute(select(table.c.symbol)).fetchall()
+        existing_symbols = {r[0] for r in rows}
+
+        for sym in canonical_set: # all in updated symbol list
+            if sym not in existing_symbols: #find the new symbol that not in original db and insert
+                conn.execute(table.insert().values(symbol=sym, status=True, date_added=today))
+            else:
+                row = conn.execute(select(table).where(table.c.symbol == sym)).fetchone() # only select one
+                if row and not row._mapping["status"]: # have data fetched and status is false 
+                    conn.execute(
+                        update(table)
+                        .where(table.c.symbol == sym)
+                        .values(status=True, date_added=today, date_removed=None)
+                    )
+
+        for sym in list(existing_symbols): # all in table which is not in sp500 list and turn to inactive 
+            if sym not in canonical_set:
+                row = conn.execute(select(table).where(table.c.symbol == sym)).fetchone()
+                if row and row._mapping["status"]:
+                    conn.execute(
+                        update(table)
+                        .where(table.c.symbol == sym)
+                        .values(status=False, date_removed=today)
+                    )
+
+    print("update_symbols done. total symbols:", len(canonical_set))
+
+def get_active_symbols() -> List[str]:
+    """回傳目前 status=True 的 symbol list"""
+    engine = get_engine()
+    metadata = MetaData()
+    table = Table("stocks", metadata, autoload_with=engine) #去資料庫「找現有的 sp500_symbols 表」，把欄位結構讀回來（reflection），讓你不用再手寫 Column。
+    with engine.connect() as conn:
+        rows = conn.execute(select(table).where(table.c.status == True)).fetchall()
+    return [r._mapping["symbol"] for r in rows]
+
+
+
+
+if __name__ == "__main__":
+    update_symbols()
+================================================================================
+_3_history_data.ipynb
+================================================================================
+--- cell 0 ---
+import time
+import random
+import requests
+import pandas as pd
+import pandas_market_calendars as mcal
+
+from datetime import datetime, date, timedelta, timezone
+from sqlalchemy import text
+
+%run _1_schema.ipynb
+
+NYSE = mcal.get_calendar("NYSE")
+
+def _sleep_backoff(attempt: int, base_sec: float = 2.0, cap_sec: float = 60.0):
+    delay = min(cap_sec, base_sec * (2 ** attempt))
+    delay = delay * (0.9 + 0.2 * random.random())
+    time.sleep(delay)
+
+def insert_stock_ohlc(df: pd.DataFrame) -> int:
+    if df is None or df.empty:
+        return 0
+
+    cols = list(df.columns)
+    insert_sql = f"""
+    INSERT INTO stock_ohlc ({', '.join(cols)})
+    VALUES ({', '.join([f":{c}" for c in cols])})
+    ON CONFLICT ON CONSTRAINT uq_symbol_datatype_ts DO NOTHING
+    """
+    records = df.to_dict(orient="records")
+    engine = get_engine()
+    with engine.begin() as conn:
+        conn.execute(text(insert_sql), records)
+    return len(records)
+
+def _exists_row(symbol: str, data_type: str, ts: int) -> bool:
+    sql = """
+    SELECT 1
+    FROM stock_ohlc
+    WHERE symbol = :symbol
+      AND data_type = :data_type
+      AND ts = :ts
+    LIMIT 1
+    """
+    engine = get_engine()
+    with engine.begin() as conn:
+        row = conn.execute(text(sql), {"symbol": symbol, "data_type": data_type, "ts": ts}).fetchone()
+    return row is not None
+
+def _last_trading_schedule(n_sessions: int, lookback_days: int = 365) -> pd.DataFrame:
+    end = pd.Timestamp.utcnow()
+    start = end - pd.Timedelta(days=lookback_days)
+    sched = NYSE.schedule(start_date=start, end_date=end)
+    return sched.tail(n_sessions)
+
+def fetch_daily_yahoo_chart(symbol: str, start_date: date, end_date: date) -> pd.DataFrame | None:
+    # Yahoo chart API: daily timestamps usually align with NYSE market open (09:30 NY = 14:30 UTC on normal days)
+    start_dt = datetime(start_date.year, start_date.month, start_date.day, tzinfo=timezone.utc)
+    end_dt = datetime(end_date.year, end_date.month, end_date.day, tzinfo=timezone.utc) + timedelta(days=1)
+
+    period1 = int(start_dt.timestamp())
+    period2 = int(end_dt.timestamp())
+
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
+    params = {
+        "period1": period1,
+        "period2": period2,
+        "interval": "1d",
+        "events": "history",
+        "includeAdjustedClose": "true",
+    }
+    headers = {"User-Agent": "Mozilla/5.0"}
+
+    resp = requests.get(url, params=params, headers=headers, timeout=20)
+    resp.raise_for_status()
+    data = resp.json()
+
+    if not data.get("chart") or not data["chart"].get("result"):
+        return None
+
+    result = data["chart"]["result"][0]
+    timestamps = result.get("timestamp", [])
+    if not timestamps:
+        return None
+
+    quote = result["indicators"]["quote"][0]
+    ts = pd.Series(timestamps, dtype="int64")
+
+    df = pd.DataFrame({
+        "symbol": symbol,
+        "data_type": "1d",
+        "ts": ts,
+        "open": quote.get("open"),
+        "high": quote.get("high"),
+        "low": quote.get("low"),
+        "close": quote.get("close"),
+        "volume": quote.get("volume"),
+    }).dropna(subset=["open", "high", "low", "close"])
+
+    if df.empty:
+        return None
+
+    return df[["symbol","data_type","ts","open","high","low","close","volume"]]
+
+def initial_daily_history(symbols, start_date: date, end_date: date | None = None,
+                         max_attempts: int = 3, base_sleep_sec: float = 2.0, per_symbol_sleep_sec: float = 0.5):
+    # 用途：第一次跑 / 新股加入，要補一大段 1d
+    if end_date is None:
+        end_date = date.today() - timedelta(days=1)
+
+    total = 0
+    for sym in symbols:
+        sym = sym.strip()
+        if not sym:
+            continue
+
+        for attempt in range(max_attempts):
+            try:
+                df = fetch_daily_yahoo_chart(sym, start_date, end_date)
+                total += insert_stock_ohlc(df)
+                break
+            except Exception as e:
+                print(f"[daily initial] {sym} attempt={attempt+1}/{max_attempts} error={e}")
+                if attempt < max_attempts - 1:
+                    _sleep_backoff(attempt, base_sec=base_sleep_sec)
+                else:
+                    print(f"[daily initial] {sym} give up for now")
+
+        time.sleep(per_symbol_sleep_sec)
+
+    print("Total inserted:", total)
+
+def backfill_daily_missing(symbols, sessions: int = 120,
+                           max_attempts: int = 3, base_sleep_sec: float = 2.0, per_symbol_sleep_sec: float = 0.2):
+    # 用途：平時維護，只補缺咗嘅 trading days（用 NYSE calendar）
+    # 注意：calendar 未必即時反映突發停市；如果真係停市但 calendar 未更新，fetch 可能返空 -> backoff + skip，下次再跑會再試。
+    sched = _last_trading_schedule(sessions)
+
+    total = 0
+    for sym in symbols:
+        sym = sym.strip()
+        if not sym:
+            continue
+
+        for day, row in sched.iterrows():
+            open_ts = int(pd.Timestamp(row["market_open"]).tz_convert("UTC").timestamp())
+
+            if _exists_row(sym, "1d", open_ts):
+                continue
+
+            d = day.date()
+            for attempt in range(max_attempts):
+                try:
+                    df = fetch_daily_yahoo_chart(sym, d, d)
+                    total += insert_stock_ohlc(df)
+                    break
+                except Exception as e:
+                    print(f"[daily missing] {sym} {d} attempt={attempt+1}/{max_attempts} error={e}")
+                    if attempt < max_attempts - 1:
+                        _sleep_backoff(attempt, base_sec=base_sleep_sec)
+                    else:
+                        print(f"[daily missing] {sym} {d} give up for now")
+
+        print(f"[daily missing] {sym} done")
+        time.sleep(per_symbol_sleep_sec)
+
+    print("Total inserted:", total)
+
+# Examples:
+# initial_daily_history(["AAPL","MSFT"], start_date=date(2015,1,1))
+# backfill_daily_missing(["AAPL","MSFT"], sessions=180)
+
+--- cell 1 ---
+import datetime
+print(datetime, type(datetime))
+
+================================================================================
+_4_intraday_backfill.ipynb
+================================================================================
+--- cell 0 ---
+import time
+import random
+import yfinance as yf
+import pandas as pd
+import pandas_market_calendars as mcal
+
+from datetime import datetime, timedelta, timezone
+from sqlalchemy import text
+
+%run _1_schema.ipynb
+%run _6_config_intervals.ipynb
+
+NYSE = mcal.get_calendar("NYSE")
+
+def _sleep_backoff(attempt: int, base_sec: float = 2.0, cap_sec: float = 60.0):
+    delay = min(cap_sec, base_sec * (2 ** attempt))
+    delay = delay * (0.9 + 0.2 * random.random())
+    time.sleep(delay)
+
+def to_epoch_sec(series):
+    return (pd.to_datetime(series, utc=True).astype("int64") // 10**9)
+
+def _flatten_yf_columns(df: pd.DataFrame) -> pd.DataFrame:
+    if isinstance(df.columns, pd.MultiIndex):
+        df = df.copy()
+        df.columns = [c[0] if isinstance(c, tuple) else c for c in df.columns]
+    return df
+
+def _interval_seconds(interval: str) -> int:
+    s = interval.strip().lower()
+    if s.endswith("m"):
+        return int(s[:-1]) * 60
+    if s.endswith("h"):
+        return int(s[:-1]) * 3600
+    if s in ("1d", "d"):
+        return 86400
+    raise ValueError(f"Unsupported interval: {interval}")
+
+def insert_stock_ohlc(df: pd.DataFrame) -> int:
+    if df is None or df.empty:
+        return 0
+
+    cols = list(df.columns)
+    insert_sql = f"""
+    INSERT INTO stock_ohlc ({', '.join(cols)})
+    VALUES ({', '.join([f":{c}" for c in cols])})
+    ON CONFLICT ON CONSTRAINT uq_symbol_datatype_ts DO NOTHING
+    """
+    records = df.to_dict(orient="records")
+    engine = get_engine()
+    with engine.begin() as conn:
+        conn.execute(text(insert_sql), records)
+    return len(records)
+
+def _count_rows(symbol: str, data_type: str, ts_from: int, ts_to: int) -> int:
+    sql = """
+    SELECT COUNT(1)
+    FROM stock_ohlc
+    WHERE symbol = :symbol
+      AND data_type = :data_type
+      AND ts BETWEEN :ts_from AND :ts_to
+    """
+    engine = get_engine()
+    with engine.begin() as conn:
+        return int(conn.execute(text(sql), {
+            "symbol": symbol, "data_type": data_type, "ts_from": ts_from, "ts_to": ts_to
+        }).scalar() or 0)
+
+def _last_trading_schedule(n_sessions: int, lookback_days: int = 180) -> pd.DataFrame:
+    end = pd.Timestamp.utcnow()
+    start = end - pd.Timedelta(days=lookback_days)
+    sched = NYSE.schedule(start_date=start, end_date=end)
+    return sched.tail(n_sessions)
+
+def fetch_intraday_window(symbol: str, interval: str, start_dt: datetime, end_dt: datetime,
+                          filter_ts_from: int | None = None, filter_ts_to: int | None = None) -> pd.DataFrame | None:
+    df = yf.download(symbol, interval=interval, start=start_dt, end=end_dt, progress=False)
+    if df is None or df.empty:
+        return None
+
+    df = _flatten_yf_columns(df).reset_index()
+    dt_col = df.columns[0]
+
+    df["ts"] = to_epoch_sec(df[dt_col])
+    df["symbol"] = symbol
+    df["data_type"] = interval
+
+    df = df.rename(columns={"Open":"open","High":"high","Low":"low","Close":"close","Volume":"volume"})
+    df = df[["symbol","data_type","ts","open","high","low","close","volume"]]
+    df = df.dropna(subset=["open", "high", "low", "close"])
+
+    # Restrict to regular session window to avoid pre/post noise if returned
+    if filter_ts_from is not None and filter_ts_to is not None:
+        df = df[(df["ts"] >= filter_ts_from) & (df["ts"] < filter_ts_to)]
+
+    return None if df.empty else df
+
+def _chunk_ranges(start: datetime, end: datetime, max_days: int):
+    cur = start
+    while cur < end:
+        nxt = min(cur + timedelta(days=max_days), end)
+        yield cur, nxt
+        cur = nxt
+
+def initial_intraday_backfill(symbols, interval="1m", sessions: int | None = None,
+                              max_attempts: int = 3, base_sleep_sec: float = 2.0, sleep_sec: float = 1.0):
+    # 用途：新股/首次，補近 N 個 trading sessions（唔係 calendar month）
+    if sessions is None:
+        sessions = int(MAIN_TABLE_RETENTION_DAYS.get(interval, 7))
+
+    api_max_days = int(API_MAX_DAYS.get(interval, 7))
+    sched = _last_trading_schedule(sessions)
+
+    open_ts = int(pd.Timestamp(sched.iloc[0]["market_open"]).tz_convert("UTC").timestamp())
+    close_ts = int(pd.Timestamp(sched.iloc[-1]["market_close"]).tz_convert("UTC").timestamp())
+    start_dt = datetime.fromtimestamp(open_ts, tz=timezone.utc)
+    end_dt = datetime.fromtimestamp(close_ts, tz=timezone.utc)
+
+    total = 0
+    for sym in symbols:
+        sym = sym.strip()
+        if not sym:
+            continue
+
+        print(f"[intraday initial] {sym} interval={interval} sessions={sessions}")
+
+        for a, b in _chunk_ranges(start_dt, end_dt, api_max_days):
+            for attempt in range(max_attempts):
+                try:
+                    df = fetch_intraday_window(sym, interval, a, b)
+                    total += insert_stock_ohlc(df)
+                    break
+                except Exception as e:
+                    print(f"[intraday initial] {sym} {a.date()}..{b.date()} attempt={attempt+1}/{max_attempts} error={e}")
+                    if attempt < max_attempts - 1:
+                        _sleep_backoff(attempt, base_sec=base_sleep_sec)
+                    else:
+                        print(f"[intraday initial] {sym} chunk give up for now")
+            time.sleep(sleep_sec)
+
+        print(f"[intraday initial] {sym} done")
+
+    print("Total inserted:", total)
+
+def backfill_intraday_missing(symbols, interval="1m", sessions: int | None = None,
+                              coverage_ratio: float = 0.9,
+                              max_attempts: int = 3, base_sleep_sec: float = 2.0, sleep_sec: float = 1.0):
+    # 用途：平時維護，只補缺口（calendar aware，避開週末/假期/已知 early close）
+    # 突發停市/資料源壞：fetch 可能返空 -> backoff + skip；下次再跑會再試，唔會無限 loop。
+    if sessions is None:
+        sessions = int(MAIN_TABLE_RETENTION_DAYS.get(interval, 7))
+
+    step = _interval_seconds(interval)
+    sched = _last_trading_schedule(sessions)
+
+    total = 0
+    for sym in symbols:
+        sym = sym.strip()
+        if not sym:
+            continue
+
+        print(f"[intraday missing] {sym} interval={interval} sessions={sessions}")
+
+        for day, row in sched.iterrows():
+            open_ts = int(pd.Timestamp(row["market_open"]).tz_convert("UTC").timestamp())
+            close_ts = int(pd.Timestamp(row["market_close"]).tz_convert("UTC").timestamp())
+
+            expected = max(1, (close_ts - open_ts) // step)
+            got = _count_rows(sym, interval, open_ts, close_ts - 1)
+
+            if got >= int(expected * coverage_ratio):
+                continue
+
+            start_dt = datetime.fromtimestamp(open_ts, tz=timezone.utc)
+            end_dt = datetime.fromtimestamp(close_ts, tz=timezone.utc)
+
+            for attempt in range(max_attempts):
+                try:
+                    df = fetch_intraday_window(sym, interval, start_dt, end_dt,
+                                               filter_ts_from=open_ts, filter_ts_to=close_ts)
+                    total += insert_stock_ohlc(df)
+                    break
+                except Exception as e:
+                    print(f"[intraday missing] {sym} {day.date()} attempt={attempt+1}/{max_attempts} error={e}")
+                    if attempt < max_attempts - 1:
+                        _sleep_backoff(attempt, base_sec=base_sleep_sec)
+                    else:
+                        print(f"[intraday missing] {sym} {day.date()} give up for now")
+
+            time.sleep(sleep_sec)
+
+        print(f"[intraday missing] {sym} done")
+
+    print("Total inserted:", total)
+
+# Examples:
+# initial_intraday_backfill(["AAPL","MSFT"], interval="1m", sessions=30)
+# backfill_intraday_missing(["AAPL","MSFT"], interval="1m", sessions=30, coverage_ratio=0.95)
+
+================================================================================
+_5_archive.ipynb
+================================================================================
+--- cell 0 ---
+from datetime import timedelta
+from sqlalchemy import text
+%run _1_schema.ipynb
+%run _6_config_intervals.ipynb
+%run _7_time_utils.ipynb
+
+
+def _ensure_tables():
+    engine = get_engine()
+    get_main_table(engine)
+    get_intraday_archive_table(engine)
+    return engine
+
+
+def archive_old_intraday(batch_limit: int = None):
+    engine = _ensure_tables()
+    now = now_store()
+    with engine.begin() as conn:
+        for interval, keep_days in MAIN_TABLE_RETENTION_DAYS.items():
+            if keep_days >= 99999:
+                continue
+            cutoff = now - timedelta(days=keep_days)
+
+            insert_sql = f"""
+            INSERT INTO stock_intraday_archive (symbol, data_type, ts, open, high, low, close, volume)
+            SELECT symbol, data_type, ts, open, high, low, close, volume
+            FROM stock_data
+            WHERE data_type = :interval AND ts < :cutoff
+            ON CONFLICT ON CONSTRAINT uq_archive_symbol_datatype_ts DO NOTHING
+            """
+            conn.execute(text(insert_sql), {"interval": interval, "cutoff": cutoff})
+
+            delete_sql = """
+            DELETE FROM stock_ohlc
+            WHERE data_type = :interval AND ts < :cutoff
+            """
+            conn.execute(text(delete_sql), {"interval": interval, "cutoff": cutoff})
+
+            print(f"[ARCHIVE MOVE] interval={interval} before {cutoff.isoformat()}")
+
+
+def cleanup_archive_expired():
+    engine = _ensure_tables()
+    now = now_store()
+    with engine.begin() as conn:
+        for interval, keep_days in ARCHIVE_RETENTION_DAYS.items():
+            if keep_days >= 99999:
+                continue
+            cutoff = now - timedelta(days=keep_days)
+
+            delete_sql = """
+            DELETE FROM stock_intraday_archive
+            WHERE data_type = :interval AND ts < :cutoff
+            """
+            conn.execute(text(delete_sql), {"interval": interval, "cutoff": cutoff})
+
+            print(f"[ARCHIVE CLEANUP] interval={interval} before {cutoff.isoformat()}")
+
+================================================================================
+_6_config_intervals.ipynb
+================================================================================
+--- cell 0 ---
+
+API_MAX_DAYS = { # 限制「一次呼叫 API」最多能抓回幾天的資料
+    "1m": 7,
+    "5m": 60,
+    "15m": 60,
+    "30m": 60,
+    "1h": 365,
+    "4h": 365,
+    "1d": 99999,
+}
+
+# 主表保留策略（主表保留 hot data 天數）
+MAIN_TABLE_RETENTION_DAYS = {
+    "1m": 30,
+    "5m": 90,
+    "15m": 90,
+    "30m": 90,
+    "1h": 180,
+    "4h": 365,
+    "1d": 99999,
+}
+
+# archive 再保留天數（可選）
+ARCHIVE_RETENTION_DAYS = {
+    "1m": 365,
+    "5m": 365 * 2,
+    "15m": 365 * 2,
+    "30m": 365 * 2,
+    "1h": 365 * 4,
+    "4h": 365 * 4,
+    "1d": 99999,
+}
+================================================================================
+test.ipynb
+================================================================================
+--- cell 0 ---
+import time
+import yfinance as yf
+
+symbols = ["AAPL", "MSFT", "NVDA", "AMZN", "GOOGL"]
+interval = "15m"
+period = "60d"
+
+times = []
+for s in symbols:
+    t0 = time.time()
+    df = yf.download(s, interval=interval, period=period, progress=False)
+    t1 = time.time()
+    times.append(t1 - t0)
+    print(f"{s} took {t1 - t0:.2f}s rows={0 if df is None else len(df)}")
+
+avg = sum(times) / len(times)
+print(f"Average time per request: {avg:.2f}s")
+--- cell 1 ---
+import time
+import requests
+
+FINNHUB_TOKEN = "d65fkg9r01qlmj2v19r0d65fkg9r01qlmj2v19rg"
+symbols = ["AAPL", "MSFT", "NVDA", "AMZN", "GOOGL"]
+
+times = []
+for s in symbols:
+    t0 = time.time()
+    r = requests.get(
+        "https://finnhub.io/api/v1/quote",
+        params={"symbol": s, "token": FINNHUB_TOKEN},
+        timeout=10,
+    )
+    r.raise_for_status()
+    t1 = time.time()
+    times.append(t1 - t0)
+    print(f"{s} took {t1 - t0:.2f}s")
+
+avg = sum(times) / len(times)
+print(f"Average time per request: {avg:.2f}s")
+--- cell 2 ---
+# if stockanalysis website changed , list all tables and find the right one with index and change to tables[n]
+import io
+import pandas as pd
+import requests
+
+url = "https://stockanalysis.com/list/sp-500-stocks/"
+resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
+resp.raise_for_status()
+
+tables = pd.read_html(io.StringIO(resp.text))
+
+# 1) 先列出每個 table 的欄位，快速看哪個像你要的
+for i, df in enumerate(tables):
+    print(i, list(df.columns))
+
+# 2) 用「條件」找出 table index（不用人工看）
+candidates = [i for i, df in enumerate(tables) if "Symbol" in df.columns]
+print("tables with Symbol:", candidates)
+
+# 3) 更精準：同時要 Symbol + Market Cap
+candidates2 = [i for i, df in enumerate(tables) if {"Symbol", "Market Cap"}.issubset(df.columns)]
+print("tables with Symbol & Market Cap:", candidates2)
+
+# 4) 真的看內容（看前幾列）
+i = candidates2[0]
+display(tables[i].head())
+
+--- cell 3 ---
+import yfinance as yf
+
+df = yf.download("AAPL", interval="1m", period="1d", progress=False)
+print(df.head())
+print(df.columns)
+
+# 轉 JSON（records）
+json_text = df.reset_index().to_json(orient="records", date_format="iso")
+print(json_text[:1000])
+
+--- cell 4 ---
+import sys, pandas as pd
+print(sys.executable)
+print(pd.__file__)
+
+================================================================================
+time_utils.ipynb
+================================================================================
+--- cell 0 ---
+# stop
+from datetime import datetime, time, timedelta, date
+from zoneinfo import ZoneInfo
+from typing import Tuple, Optional
+
+MARKET_TZ = ZoneInfo("America/New_York")
+STORE_TZ = ZoneInfo("Asia/Hong_Kong")
+UTC = ZoneInfo("UTC")
+
+NY = MARKET_TZ
+HK = STORE_TZ
+
+
+def now_market() -> datetime:
+    return datetime.now(MARKET_TZ)
+
+
+def now_store() -> datetime:
+    return datetime.now(STORE_TZ)
+
+
+def now_ny() -> datetime:
+    return now_market()
+
+
+def ensure_tz(dt: datetime, assume_tz: ZoneInfo) -> datetime:
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=assume_tz)
+    return dt
+
+
+def to_store_tz(dt: datetime, assume_tz: ZoneInfo = MARKET_TZ) -> datetime:
+    return ensure_tz(dt, assume_tz).astimezone(STORE_TZ)
+
+
+def to_market_tz(dt: datetime, assume_tz: ZoneInfo = STORE_TZ) -> datetime:
+    return ensure_tz(dt, assume_tz).astimezone(MARKET_TZ)
+
+
+def delayed_timestamp(minutes: int = 15, now: Optional[datetime] = None) -> datetime:
+    if now is None:
+        now = now_market()
+    now = ensure_tz(now, MARKET_TZ)
+    return now - timedelta(minutes=minutes)
+
+
+def market_close_ts(
+    d: date,
+    close_hm: Tuple[int, int] = (16, 0),
+    delay_minutes: int = 0,
+) -> datetime:
+    base = datetime(d.year, d.month, d.day, close_hm[0], close_hm[1], tzinfo=MARKET_TZ)
+    if delay_minutes:
+        base = base + timedelta(minutes=delay_minutes)
+    return to_store_tz(base, MARKET_TZ)
+
+
+def in_work_window(
+    start_hm: Tuple[int, int] = (9, 45),
+    end_hm: Tuple[int, int] = (16, 15),
+    now: Optional[datetime] = None,
+) -> bool:
+    if now is None:
+        now = now_market()
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=MARKET_TZ)
+    start = time(start_hm[0], start_hm[1])
+    end = time(end_hm[0], end_hm[1])
+    t = now.timetz()
+    return start <= t <= end

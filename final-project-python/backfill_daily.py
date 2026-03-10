@@ -1,0 +1,169 @@
+import argparse
+import time
+from datetime import date, datetime, timedelta, timezone
+
+import pandas as pd
+import pandas_market_calendars as mcal
+import requests
+from sqlalchemy import text
+
+from backfill_utils import (
+    get_engine,
+    ensure_schema,
+    yahoo_symbol,
+    sleep_backoff,
+    insert_stock_ohlc,
+    parse_symbols_arg,
+)
+
+
+NYSE = mcal.get_calendar("NYSE")
+
+
+def last_trading_schedule(n_sessions: int, lookback_days: int = 365) -> pd.DataFrame:
+    end = pd.Timestamp.now("UTC")
+    start = end - pd.Timedelta(days=lookback_days)
+    sched = NYSE.schedule(start_date=start, end_date=end)
+    return sched.tail(n_sessions)
+
+
+def fetch_daily_yahoo_chart(symbol: str, start_date: date, end_date: date):
+    sym_fetch = yahoo_symbol(symbol)
+
+    start_dt = datetime(start_date.year, start_date.month, start_date.day, tzinfo=timezone.utc)
+    end_dt = datetime(end_date.year, end_date.month, end_date.day, tzinfo=timezone.utc) + timedelta(days=1)
+
+    period1 = int(start_dt.timestamp())
+    period2 = int(end_dt.timestamp())
+
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{sym_fetch}"
+    params = {
+        "period1": period1,
+        "period2": period2,
+        "interval": "1d",
+        "events": "history",
+        "includeAdjustedClose": "true",
+    }
+    headers = {"User-Agent": "Mozilla/5.0"}
+
+    resp = requests.get(url, params=params, headers=headers, timeout=20)
+    resp.raise_for_status()
+    data = resp.json()
+
+    if not data.get("chart") or not data["chart"].get("result"):
+        return None
+
+    result = data["chart"]["result"][0]
+    timestamps = result.get("timestamp", [])
+    if not timestamps:
+        return None
+
+    quote = result["indicators"]["quote"][0]
+    ts = pd.Series(timestamps, dtype="int64")
+
+    df = pd.DataFrame(
+        {
+            "symbol": symbol,  # store original (e.g. BRK.B)
+            "data_type": "1d",
+            "ts": ts,
+            "open": quote.get("open"),
+            "high": quote.get("high"),
+            "low": quote.get("low"),
+            "close": quote.get("close"),
+            "volume": quote.get("volume"),
+        }
+    ).dropna(subset=["open", "high", "low", "close"])
+
+    if df.empty:
+        return None
+
+    return df[["symbol", "data_type", "ts", "open", "high", "low", "close", "volume"]]
+
+
+def run(symbols: list[str], mode: str, start_date_str: str | None, sessions: int, max_attempts: int, sleep_sec: float):
+    engine = get_engine()
+    ensure_schema(engine)
+    total = 0
+
+    if not symbols:
+        with engine.begin() as conn:
+            rows = conn.execute(
+                text(
+                    """
+SELECT symbol
+FROM stocks
+WHERE status = true
+ORDER BY symbol
+"""
+                )
+            ).fetchall()
+        symbols = [r[0] for r in rows]
+
+    if not symbols:
+        engine.dispose()
+        raise ValueError("No symbols provided and no active symbols found in DB.")
+
+    if mode == "initial":
+        if not start_date_str:
+            start_date = date(2015, 1, 1)
+        else:
+            start_date = date.fromisoformat(start_date_str)
+        end_date = date.today() - timedelta(days=1)
+        per_symbol_ranges = [(start_date, end_date)]
+    else:
+        # missing/maintenance: pull a recent trading-session window (not per-day checking)
+        sched = last_trading_schedule(sessions)
+        start_date = sched.index[0].date()
+        end_date = sched.index[-1].date()
+        per_symbol_ranges = [(start_date, end_date)]
+
+    for sym in symbols:
+        sym = sym.strip()
+        if not sym:
+            continue
+
+        for start_d, end_d in per_symbol_ranges:
+            for attempt in range(max_attempts):
+                try:
+                    df = fetch_daily_yahoo_chart(sym, start_d, end_d)
+                    with engine.begin() as conn:
+                        total += insert_stock_ohlc(conn, df)
+                    break
+                except Exception as e:
+                    print(f"[daily {mode}] {sym} {start_d}..{end_d} attempt={attempt+1}/{max_attempts} error={e}")
+                    if attempt < max_attempts - 1:
+                        sleep_backoff(attempt)
+                    else:
+                        print(f"[daily {mode}] {sym} give up for now")
+
+        if sleep_sec:
+            time.sleep(sleep_sec)
+
+    engine.dispose()
+    print(f"[daily {mode}] Total inserted: {total}")
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--mode", choices=["initial", "missing"], required=True)
+    ap.add_argument("--symbols", default=None)
+    ap.add_argument("--symbols-file", default=None)
+    ap.add_argument("--start-date", default=None, help="YYYY-MM-DD for initial mode (default 2015-01-01)")
+    ap.add_argument("--sessions", type=int, default=180, help="Trading sessions window for missing mode")
+    ap.add_argument("--max-attempts", type=int, default=3)
+    ap.add_argument("--sleep", type=float, default=0.0)
+    args = ap.parse_args()
+
+    syms = parse_symbols_arg(args.symbols, args.symbols_file)
+    run(
+        syms,
+        mode=args.mode,
+        start_date_str=args.start_date,
+        sessions=args.sessions,
+        max_attempts=args.max_attempts,
+        sleep_sec=args.sleep,
+    )
+
+
+if __name__ == "__main__":
+    main()

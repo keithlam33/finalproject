@@ -1,0 +1,250 @@
+[
+  {
+    "path": "final-project-python\\archive.ipynb",
+    "size_kb": 3.1,
+    "valid_json": true,
+    "n_cells": 1,
+    "kernel": "bootcamp-env",
+    "language": "python",
+    "errors_in_outputs": 0,
+    "error_cells": [],
+    "has_execution_counts": true,
+    "total_output_chars": 0,
+    "max_output_chars": 0,
+    "large_outputs": [],
+    "possible_secrets": []
+  },
+  {
+    "path": "final-project-python\\config_intervals.ipynb",
+    "size_kb": 1.2,
+    "valid_json": true,
+    "n_cells": 1,
+    "kernel": null,
+    "language": "python",
+    "errors_in_outputs": 0,
+    "error_cells": [],
+    "has_execution_counts": false,
+    "total_output_chars": 0,
+    "max_output_chars": 0,
+    "large_outputs": [],
+    "possible_secrets": []
+  },
+  {
+    "path": "final-project-python\\daily.ipynb",
+    "size_kb": 8.4,
+    "valid_json": true,
+    "n_cells": 1,
+    "kernel": "bootcamp-env",
+    "language": "python",
+    "errors_in_outputs": 0,
+    "error_cells": [],
+    "has_execution_counts": true,
+    "total_output_chars": 77,
+    "max_output_chars": 77,
+    "large_outputs": [],
+    "possible_secrets": [
+      {
+        "cell": 0,
+        "pattern": "generic_api_key"
+      }
+    ]
+  },
+  {
+    "path": "final-project-python\\database.ipynb",
+    "size_kb": 3.0,
+    "valid_json": true,
+    "n_cells": 1,
+    "kernel": "bootcamp-env",
+    "language": null,
+    "errors_in_outputs": 0,
+    "error_cells": [],
+    "has_execution_counts": true,
+    "total_output_chars": 0,
+    "max_output_chars": 0,
+    "large_outputs": [],
+    "possible_secrets": []
+  },
+  {
+    "path": "final-project-python\\get_symbols.ipynb",
+    "size_kb": 9.7,
+    "valid_json": true,
+    "n_cells": 1,
+    "kernel": "bootcamp-env",
+    "language": "python",
+    "errors_in_outputs": 1,
+    "error_cells": [
+      {
+        "cell": 0,
+        "output": 0,
+        "ename": "TypeError",
+        "evalue": "tuple indices must be integers or slices, not Column"
+      }
+    ],
+    "has_execution_counts": false,
+    "total_output_chars": 0,
+    "max_output_chars": 0,
+    "large_outputs": [],
+    "possible_secrets": []
+  },
+  {
+    "path": "final-project-python\\history_data.ipynb",
+    "size_kb": 7.7,
+    "valid_json": true,
+    "n_cells": 2,
+    "kernel": "bootcamp-env",
+    "language": null,
+    "errors_in_outputs": 1,
+    "error_cells": [
+      {
+        "cell": 1,
+        "output": 0,
+        "ename": "NameError",
+        "evalue": "name 'get_history_for_symbol' is not defined"
+      }
+    ],
+    "has_execution_counts": false,
+    "total_output_chars": 0,
+    "max_output_chars": 0,
+    "large_outputs": [],
+    "possible_secrets": []
+  },
+  {
+    "path": "final-project-python\\indicators.ipynb",
+    "size_kb": 2.4,
+    "valid_json": true,
+    "n_cells": 1,
+    "kernel": null,
+    "language": "python",
+    "errors_in_outputs": 0,
+    "error_cells": [],
+    "has_execution_counts": false,
+    "total_output_chars": 0,
+    "max_output_chars": 0,
+    "large_outputs": [],
+    "possible_secrets": []
+  },
+  {
+    "path": "final-project-python\\intraday_common.ipynb",
+    "size_kb": 7.1,
+    "valid_json": true,
+    "n_cells": 1,
+    "kernel": "bootcamp-env",
+    "language": "python",
+    "errors_in_outputs": 0,
+    "error_cells": [],
+    "has_execution_counts": false,
+    "total_output_chars": 0,
+    "max_output_chars": 0,
+    "large_outputs": [],
+    "possible_secrets": []
+  },
+  {
+    "path": "final-project-python\\intraday_other.ipynb",
+    "size_kb": 5.3,
+    "valid_json": true,
+    "n_cells": 1,
+    "kernel": "bootcamp-env",
+    "language": "python",
+    "errors_in_outputs": 0,
+    "error_cells": [],
+    "has_execution_counts": true,
+    "total_output_chars": 0,
+    "max_output_chars": 0,
+    "large_outputs": [],
+    "possible_secrets": []
+  },
+  {
+    "path": "final-project-python\\intraday_top50.ipynb",
+    "size_kb": 5.5,
+    "valid_json": true,
+    "n_cells": 1,
+    "kernel": "bootcamp-env",
+    "language": "python",
+    "errors_in_outputs": 0,
+    "error_cells": [],
+    "has_execution_counts": true,
+    "total_output_chars": 0,
+    "max_output_chars": 0,
+    "large_outputs": [],
+    "possible_secrets": []
+  },
+  {
+    "path": "final-project-python\\main.ipynb",
+    "size_kb": 10962.7,
+    "valid_json": true,
+    "n_cells": 1,
+    "kernel": "bootcamp-env",
+    "language": null,
+    "errors_in_outputs": 0,
+    "error_cells": [],
+    "has_execution_counts": false,
+    "total_output_chars": 9838449,
+    "max_output_chars": 9838449,
+    "large_outputs": [
+      {
+        "cell": 0,
+        "output": 0,
+        "chars": 9838449,
+        "output_type": "stream"
+      }
+    ],
+    "possible_secrets": []
+  },
+  {
+    "path": "final-project-python\\scheduler.ipynb",
+    "size_kb": 3.9,
+    "valid_json": true,
+    "n_cells": 1,
+    "kernel": "bootcamp-env",
+    "language": "python",
+    "errors_in_outputs": 1,
+    "error_cells": [
+      {
+        "cell": 0,
+        "output": 1,
+        "ename": "",
+        "evalue": ""
+      }
+    ],
+    "has_execution_counts": true,
+    "total_output_chars": 80,
+    "max_output_chars": 80,
+    "large_outputs": [],
+    "possible_secrets": []
+  },
+  {
+    "path": "final-project-python\\tes.ipynb",
+    "size_kb": 2.6,
+    "valid_json": true,
+    "n_cells": 2,
+    "kernel": "bootcamp-env",
+    "language": "python",
+    "errors_in_outputs": 0,
+    "error_cells": [],
+    "has_execution_counts": true,
+    "total_output_chars": 276,
+    "max_output_chars": 163,
+    "large_outputs": [],
+    "possible_secrets": [
+      {
+        "cell": 1,
+        "pattern": "generic_api_key"
+      }
+    ]
+  },
+  {
+    "path": "final-project-python\\time_utils.ipynb",
+    "size_kb": 1.9,
+    "valid_json": true,
+    "n_cells": 1,
+    "kernel": null,
+    "language": "python",
+    "errors_in_outputs": 0,
+    "error_cells": [],
+    "has_execution_counts": false,
+    "total_output_chars": 0,
+    "max_output_chars": 0,
+    "large_outputs": [],
+    "possible_secrets": []
+  }
+]

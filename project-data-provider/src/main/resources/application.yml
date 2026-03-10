@@ -1,0 +1,26 @@
+server:
+  port: 8090
+
+spring:
+  application:
+    name: project-data-provider
+  datasource:
+    driver-class-name: org.postgresql.Driver
+    url: "jdbc:postgresql://postgres-container:5432/bootcamp_2512"
+    username: "postgres"
+    password: "admin1234"
+
+external-api:
+  yahoo:
+    domain: query1.finance.yahoo.com
+    uri:
+      quote: "/v7/finance/quote"
+    crumb: "/pMYcfv1DDn"   
+    cookie: "A1=d=AQABBGzrV2kCEJiI-v9jR0QtxmDKdA3LK_0FEgEBAQE8WWlhaVii8HgB_eMDAA&S=AQAAArJ0r9OSN48tUffYn553L6E; A3=d=AQABBGzrV2kCEJiI-v9jR0QtxmDKdA3LK_0FEgEBAQE8WWlhaVii8HgB_eMDAA&S=AQAAArJ0r9OSN48tUffYn553L6E; PRF=t%3DVOO; _ga_LHGXQCMSKY=GS2.1.s1767369837$o1$g0$t1767369837$j60$l0$h0; _ga=GA1.1.1796943783.1767369837; axids=gam=y-VPBqi7RE2uJ4LyqxMyXXVKSd2yBQtJ0G~A&dv360=eS1PQzlkTDJGRTJ1RW84MFpEeU5RSDc3UjJWeGlzLjVBUX5B&ydsp=y-YDSLNvdE2uJKFVfszOIw67FhtEz9qIyX~A&tbla=y-7ljMrAxE2uKLD2OZQsOvd4b9gtXS185N~A; tbla_id=28f63e84-440a-4a5b-92a7-cd2c3c171749-tuct105171ee; cmp=t=1767373438&j=0&u=1---; A1S=d=AQABBGzrV2kCEJiI-v9jR0QtxmDKdA3LK_0FEgEBAQE8WWlhaVii8HgB_eMDAA&S=AQAAArJ0r9OSN48tUffYn553L6E"             
+    user-agent: "Mozilla/5.0"
+  finnhub:
+    domain: finnhub.io
+    uri:
+      profile2: "/api/v1/stock/profile2"
+    token: "d65fkg9r01qlmj2v19r0d65fkg9r01qlmj2v19rg"
+    
