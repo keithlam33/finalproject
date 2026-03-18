@@ -5,9 +5,9 @@ from typing import List
 
 import pandas as pd
 import requests
-from sqlalchemy import Table, Column, MetaData, Boolean, String, Date, select, update
+from sqlalchemy import MetaData, Table, select, update
 
-from backfill_utils import get_engine
+from backfill_utils import ensure_schema, get_engine
 
 SP500_URL = "https://stockanalysis.com/list/sp-500-stocks/"
 SP500_WIKI = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
@@ -53,16 +53,9 @@ def get_sp500_symbols_from_web() -> List[str]:
 
 
 def get_symbols_table(engine):
+    ensure_schema(engine)
     metadata = MetaData()
-    table = Table(
-        "stocks", metadata,
-        Column("symbol", String, primary_key=True),
-        Column("status", Boolean, nullable=False),
-        Column("date_added", Date),
-        Column("date_removed", Date),
-    )
-    metadata.create_all(engine)
-    return table
+    return Table("stocks", metadata, autoload_with=engine)
 
 
 def update_symbols(dry_run: bool = False):

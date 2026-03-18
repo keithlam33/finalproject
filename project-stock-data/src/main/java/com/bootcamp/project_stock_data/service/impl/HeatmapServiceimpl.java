@@ -39,20 +39,24 @@ public class HeatmapServiceimpl implements HeatmapService {
 
     return active.stream()
         .map(s -> {
-          if (s == null || s.getSymbol() == null)
+          if (s == null || s.getSymbol() == null) {
             return null;
+          }
 
           String symbol = s.getSymbol().trim();
-          if (symbol.isEmpty())
+          if (symbol.isEmpty()) {
             return null;
+          }
 
-          StockProfileEntity profile = stockProfileRepository.findById(symbol).orElse(null);
-          if (profile == null)
+          StockProfileEntity profile = stockProfileRepository.findBySymbol(symbol).orElse(null);
+          if (profile == null) {
             return null;
+          }
 
           CachedQuoteDto cached = quoteCacheService.getLatestQuote(symbol);
-          if (cached == null)
-            return null; // cache miss: you can choose to return a DTO with null price instead
+          if (cached == null) {
+            return null;
+          }
 
           YahooQuoteDTO.QuoteDto quote = toYahooQuote(cached);
           return dtoMapper.map(profile, quote);

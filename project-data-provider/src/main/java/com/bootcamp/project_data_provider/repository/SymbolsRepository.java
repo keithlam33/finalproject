@@ -8,6 +8,6 @@ import org.springframework.stereotype.Repository;
 import com.bootcamp.project_data_provider.entity.SymbolsEntity;
 
 @Repository
-public interface SymbolsRepository extends JpaRepository<SymbolsEntity, String> {
+public interface SymbolsRepository extends JpaRepository<SymbolsEntity, Long> {
   List<SymbolsEntity> findByStatusTrue();
 }

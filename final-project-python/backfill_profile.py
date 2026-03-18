@@ -61,6 +61,14 @@ def fetch_company_profile(url: str, symbol: str, timeout_sec: int):
     return resp.json()
 
 
+def wait_for_rate_limit(started_at: float, min_cycle_sec: float) -> None:
+    if min_cycle_sec <= 0:
+        return
+    remaining = min_cycle_sec - (time.monotonic() - started_at)
+    if remaining > 0:
+        time.sleep(remaining)
+
+
 def run(
     symbols: list[str],
     provider_base_url: str,
@@ -98,6 +106,7 @@ def run(
         if not symbol:
             continue
 
+        started_at = time.monotonic()
         payload = None
         last_error = None
 
@@ -115,10 +124,18 @@ def run(
 
         if payload is None:
             failed.append((symbol, str(last_error)))
+            wait_for_rate_limit(started_at, sleep_sec)
             continue
 
+        provider_symbol = (payload.get("symbol") or "").strip()
+        if provider_symbol and provider_symbol != symbol:
+            print(
+                f"[profile] symbol mismatch request={symbol} provider={provider_symbol}. "
+                f"Keep request symbol for DB FK consistency."
+            )
+
         row = {
-            "symbol": (payload.get("symbol") or symbol).strip(),
+            "symbol": symbol,
             "company_name": payload.get("companyName") or symbol,
             "industry": payload.get("industry") or "Unknown",
             "market_cap": payload.get("marketCap"),
@@ -128,15 +145,19 @@ def run(
         if dry_run:
             print(f"[DRY-RUN] upsert {row['symbol']} ({row['company_name']})")
         else:
-            with engine.begin() as conn:
-                conn.execute(UPSERT_PROFILE_SQL, row)
+            try:
+                with engine.begin() as conn:
+                    conn.execute(UPSERT_PROFILE_SQL, row)
+            except Exception as e:
+                failed.append((symbol, f"db upsert error={e}"))
+                wait_for_rate_limit(started_at, sleep_sec)
+                continue
 
         ok += 1
         if idx % 20 == 0 or idx == total:
             print(f"progress {idx}/{total} synced={ok} failed={len(failed)}")
 
-        if sleep_sec > 0:
-            time.sleep(sleep_sec)
+        wait_for_rate_limit(started_at, sleep_sec)
 
     print(f"profile sync done. synced={ok} failed={len(failed)}")
     if failed:
@@ -158,7 +179,12 @@ def main():
     )
     ap.add_argument("--company-path", default="/company")
     ap.add_argument("--max-attempts", type=int, default=3)
-    ap.add_argument("--sleep", type=float, default=1.1, help="Seconds between symbols.")
+    ap.add_argument(
+        "--sleep",
+        type=float,
+        default=1.0,
+        help="Minimum seconds per symbol. Default 1.0 fits Finnhub 30 requests / 30 seconds.",
+    )
     ap.add_argument("--timeout", type=int, default=20, help="HTTP timeout seconds.")
     ap.add_argument(
         "--only-missing",

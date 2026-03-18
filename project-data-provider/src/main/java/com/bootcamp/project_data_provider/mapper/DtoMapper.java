@@ -37,7 +37,7 @@ public class DtoMapper {
     List<QuoteResponseDto.QuoteDto> list = quote.getQuoteResponse().getResult().stream()
         .filter(r -> r != null)
         .map(r -> QuoteResponseDto.QuoteDto.builder()
-            .symbol(r.getSymbol())
+            .symbol(toInternalSymbol(r.getSymbol()))
             .price(r.getRegularMarketPrice())
             .change(r.getRegularMarketChange())
             .changePercent(r.getRegularMarketChangePercent())
@@ -54,6 +54,13 @@ public class DtoMapper {
     return QuoteResponseDto.builder()
         .quotes(list)
         .build();
+}
+
+    private String toInternalSymbol(String symbol) {
+    if (symbol == null) {
+        return null;
+    }
+    return symbol.trim().toUpperCase().replace('-', '.');
 }
 
 }

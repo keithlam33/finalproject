@@ -30,7 +30,7 @@ public class QuoteCacheServiceimpl implements QuoteCacheService {
       if (q == null || q.getSymbol() == null)
         continue;
 
-      String symbol = q.getSymbol().trim();
+      String symbol = toInternalSymbol(q.getSymbol());
       if (symbol.isEmpty())
         continue;
 
@@ -56,10 +56,16 @@ public class QuoteCacheServiceimpl implements QuoteCacheService {
   public CachedQuoteDto getLatestQuote(String symbol) {
     if (symbol == null)
       return null;
-    String s = symbol.trim();
+    String s = toInternalSymbol(symbol);
     if (s.isEmpty())
       return null;
-    return redisManager.get(KEY_PREFIX + s, CachedQuoteDto.class);
+    CachedQuoteDto exact = redisManager.get(KEY_PREFIX + s, CachedQuoteDto.class);
+    if (exact != null) {
+      return exact;
+    }
+
+    // Temporary compatibility fallback for any old cache entry written with Yahoo style.
+    return redisManager.get(KEY_PREFIX + toYahooSymbol(s), CachedQuoteDto.class);
   }
 
   @Override
@@ -74,5 +80,13 @@ public class QuoteCacheServiceimpl implements QuoteCacheService {
         out.add(q);
     }
     return out;
+  }
+
+  private String toInternalSymbol(String symbol) {
+    return symbol.trim().toUpperCase().replace('-', '.');
+  }
+
+  private String toYahooSymbol(String symbol) {
+    return symbol.replace(".", "-");
   }
 }

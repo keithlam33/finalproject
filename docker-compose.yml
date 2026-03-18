@@ -30,6 +30,8 @@ services:
       - bootcamp-network
     ports:
       - "8100:8090"
+    depends_on:
+      - postgres
   stock-data-app:
     image: project-stock-data:0.0.1
     container_name: stock-data-app
@@ -37,6 +39,19 @@ services:
       - bootcamp-network
     ports:
       - "8101:8091"
+    depends_on:
+      - postgres
+      - redis
+      - data-provider-app
+  stock-frontend-app:
+    image: project-stock-frontend:0.0.1
+    container_name: stock-frontend-app
+    networks:
+      - bootcamp-network
+    ports:
+      - "8102:80"
+    depends_on:
+      - stock-data-app
   
 volumes:
   redis_data:

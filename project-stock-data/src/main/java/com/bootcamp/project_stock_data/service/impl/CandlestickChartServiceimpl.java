@@ -37,20 +37,20 @@ public class CandlestickChartServiceimpl implements CandlestickChartService {
 
   @Override
   public CandlestickChartDto getCandlestick(String symbol, String interval, Integer limit, Long beforeTs) {
-    if (symbol == null || symbol.isBlank())
-      return null;
+    if (symbol == null || symbol.isBlank()) {
+      throw new IllegalArgumentException("Symbol is required.");
+    }
 
     String s = symbol.trim();
     String i = interval == null ? null : interval.trim();
-    if (i == null || i.isEmpty())
-      return null;
+    if (i == null || i.isEmpty()) {
+      throw new IllegalArgumentException("Interval is required.");
+    }
 
-    StockProfileEntity profile = stockProfileRepository.findById(s).orElse(null);
+    StockProfileEntity profile = stockProfileRepository.findBySymbol(s).orElse(null);
     List<StockOhlcEntity> candles = findCandles(s, i, limit, beforeTs);
 
     CachedQuoteDto cached = quoteCacheService.getLatestQuote(s);
-
-    // If cache miss, build a minimal quote from DB latest candle close (so endpoint still returns something).
     YahooQuoteDTO.QuoteDto quote = (cached != null) ? toYahooQuote(cached) : fallbackQuoteFromDbLatest(s, i);
 
     return dtoMapper.map(profile, quote, candles, i);
@@ -78,9 +78,9 @@ public class CandlestickChartServiceimpl implements CandlestickChartService {
     StockOhlcEntity last = stockOhlcRepository.findTopBySymbolAndDataTypeOrderByTsDesc(symbol, interval);
     if (last != null) {
       q.price = last.getClose();
-      q.marketTime = last.getTs(); // best-effort: use bar time as quote time
+      q.marketTime = last.getTs();
     }
-    return q; // other fields null OK
+    return q;
   }
 
   private YahooQuoteDTO.QuoteDto toYahooQuote(CachedQuoteDto c) {

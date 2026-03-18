@@ -12,6 +12,7 @@ public class CandlestickChartDto {
     public String symbol;
     public String companyName;
     public String industry;
+    public String logo;
 
     public Double currentPrice;
     public Double change;
@@ -21,6 +22,7 @@ public class CandlestickChartDto {
     public Double dayHigh;
     public Double dayLow;
     public Double prevClose;
+    public Long dayVolume;
 
     public String marketState;
     public Long marketTime; // epochSec (quote time from provider)

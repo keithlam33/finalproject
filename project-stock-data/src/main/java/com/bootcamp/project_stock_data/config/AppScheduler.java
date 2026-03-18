@@ -222,4 +222,5 @@ public class AppScheduler {
     DayOfWeek d = t.getDayOfWeek();
     return d != DayOfWeek.SATURDAY && d != DayOfWeek.SUNDAY;
   }
+  
 }

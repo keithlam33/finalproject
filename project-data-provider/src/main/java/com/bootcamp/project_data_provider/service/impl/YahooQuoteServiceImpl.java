@@ -12,10 +12,14 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
+import org.springframework.web.client.ResourceAccessException;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import com.bootcamp.project_data_provider.dto.QuoteResponseDto;
+import com.bootcamp.project_data_provider.exception.BusinessException;
+import com.bootcamp.project_data_provider.exception.SysEx;
 import com.bootcamp.project_data_provider.external.yahoo.YahooSessionManager;
 import com.bootcamp.project_data_provider.mapper.DtoMapper;
 import com.bootcamp.project_data_provider.model.dto.YahooQuoteDTO;
@@ -42,6 +46,9 @@ public class YahooQuoteServiceImpl implements YahooQuoteService {
   @Override
   public QuoteResponseDto getQuote(List<String> symbols) {
     String csv = normalizeSymbols(symbols);
+    if (csv.isBlank()) {
+      throw new IllegalArgumentException("At least one symbol is required.");
+    }
 
     String crumb = yahooSessionManager.getCrumb();
     String cookie = yahooSessionManager.getCookieHeader();
@@ -66,10 +73,28 @@ public class YahooQuoteServiceImpl implements YahooQuoteService {
     try {
       ResponseEntity<YahooQuoteDTO> resp = this.restTemplate.exchange(
           url, HttpMethod.GET, entity, YahooQuoteDTO.class);
-      return dtoMapper.map(resp.getBody());
+      YahooQuoteDTO body = resp.getBody();
+      if (body == null || body.getQuoteResponse() == null) {
+        throw new BusinessException(
+            SysEx.YAHOO_RESPONSE_INVALID,
+            SysEx.YAHOO_RESPONSE_INVALID.getMessage() + " Empty response body.");
+      }
+      return dtoMapper.map(body);
     } catch (HttpClientErrorException | HttpServerErrorException ex) {
       yahooSessionManager.invalidate();
-      throw ex;
+      throw new BusinessException(
+          SysEx.YAHOO_API_CALL_FAILED,
+          SysEx.YAHOO_API_CALL_FAILED.getMessage() + " status=" + ex.getStatusCode() + " message=" + ex.getMessage());
+    } catch (ResourceAccessException ex) {
+      yahooSessionManager.invalidate();
+      throw new BusinessException(
+          SysEx.YAHOO_API_CALL_FAILED,
+          SysEx.YAHOO_API_CALL_FAILED.getMessage() + " " + ex.getMessage());
+    } catch (RestClientException ex) {
+      yahooSessionManager.invalidate();
+      throw new BusinessException(
+          SysEx.YAHOO_RESPONSE_INVALID,
+          SysEx.YAHOO_RESPONSE_INVALID.getMessage() + " " + ex.getMessage());
     }
   }
 
@@ -78,8 +103,15 @@ public class YahooQuoteServiceImpl implements YahooQuoteService {
       return "";
     }
     return symbols.stream()
-        .map(s -> s.trim())
+        .filter(s -> s != null)
+        .map(String::trim)
+        .map(String::toUpperCase)
         .filter(s -> !s.isBlank())
+        .map(YahooQuoteServiceImpl::toYahooSymbol)
         .collect(Collectors.joining(","));
+  }
+
+  private static String toYahooSymbol(String symbol) {
+    return symbol.replace(".", "-");
   }
 }

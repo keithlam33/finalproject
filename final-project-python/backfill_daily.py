@@ -18,6 +18,11 @@ from backfill_utils import (
 
 
 NYSE = mcal.get_calendar("NYSE")
+PROGRESS_EVERY = 20
+
+
+def log(message: str) -> None:
+    print(message, flush=True)
 
 
 def last_trading_schedule(n_sessions: int, lookback_days: int = 365) -> pd.DataFrame:
@@ -25,6 +30,33 @@ def last_trading_schedule(n_sessions: int, lookback_days: int = 365) -> pd.DataF
     start = end - pd.Timedelta(days=lookback_days)
     sched = NYSE.schedule(start_date=start, end_date=end)
     return sched.tail(n_sessions)
+
+
+def resolve_daily_end_date() -> date:
+    now_ts = pd.Timestamp.now("UTC")
+    sched = NYSE.schedule(
+        start_date=(now_ts - pd.Timedelta(days=10)).date(),
+        end_date=(now_ts + pd.Timedelta(days=1)).date(),
+    )
+    closed = sched.loc[sched["market_close"] <= now_ts]
+    if closed.empty:
+        return (now_ts - pd.Timedelta(days=1)).date()
+    return closed.index[-1].date()
+
+
+def load_latest_daily_ts_map(engine) -> dict[str, int]:
+    with engine.begin() as conn:
+        rows = conn.execute(
+            text(
+                """
+SELECT symbol, MAX(ts) AS max_ts
+FROM stock_ohlc
+WHERE data_type = '1d'
+GROUP BY symbol
+"""
+            )
+        ).fetchall()
+    return {str(r[0]): int(r[1]) for r in rows if r[0] is not None and r[1] is not None}
 
 
 def fetch_daily_yahoo_chart(symbol: str, start_date: date, end_date: date):
@@ -82,8 +114,11 @@ def fetch_daily_yahoo_chart(symbol: str, start_date: date, end_date: date):
 
 def run(symbols: list[str], mode: str, start_date_str: str | None, sessions: int, max_attempts: int, sleep_sec: float):
     engine = get_engine()
+    log(f"[daily {mode}] start. symbols={'db-active' if not symbols else len(symbols)}")
     ensure_schema(engine)
     total = 0
+    failed_symbols = 0
+    skipped_symbols = 0
 
     if not symbols:
         with engine.begin() as conn:
@@ -108,21 +143,56 @@ ORDER BY symbol
             start_date = date(2015, 1, 1)
         else:
             start_date = date.fromisoformat(start_date_str)
-        end_date = date.today() - timedelta(days=1)
+        end_date = resolve_daily_end_date()
         per_symbol_ranges = [(start_date, end_date)]
+        latest_daily_ts_map: dict[str, int] = {}
+        bootstrap_start_date = start_date
     else:
-        # missing/maintenance: pull a recent trading-session window (not per-day checking)
+        # missing/maintenance:
+        # use each symbol's latest stored daily ts as the resume point.
+        end_date = resolve_daily_end_date()
         sched = last_trading_schedule(sessions)
-        start_date = sched.index[0].date()
-        end_date = sched.index[-1].date()
-        per_symbol_ranges = [(start_date, end_date)]
+        bootstrap_start_date = sched.index[0].date()
+        latest_daily_ts_map = load_latest_daily_ts_map(engine)
+        per_symbol_ranges = []
 
-    for sym in symbols:
+    if mode == "initial":
+        log(
+            f"[daily {mode}] window={per_symbol_ranges[0][0].isoformat()}..{per_symbol_ranges[0][1].isoformat()} "
+            f"total_symbols={len(symbols)}"
+        )
+    else:
+        log(
+            f"[daily {mode}] end_date={end_date.isoformat()} total_symbols={len(symbols)} "
+            f"resume_by_latest_db_ts=true bootstrap_if_missing={bootstrap_start_date.isoformat()}"
+        )
+
+    for idx, sym in enumerate(symbols, start=1):
         sym = sym.strip()
         if not sym:
             continue
 
-        for start_d, end_d in per_symbol_ranges:
+        symbol_failed = False
+        if mode == "initial":
+            symbol_ranges = per_symbol_ranges
+        else:
+            latest_ts = latest_daily_ts_map.get(sym)
+            if latest_ts is None:
+                symbol_ranges = [(bootstrap_start_date, end_date)]
+            else:
+                latest_date = datetime.fromtimestamp(latest_ts, tz=timezone.utc).date()
+                start_d = latest_date - timedelta(days=2)
+                if start_d > end_date:
+                    skipped_symbols += 1
+                    if idx % PROGRESS_EVERY == 0 or idx == len(symbols):
+                        log(
+                            f"[daily {mode}] progress {idx}/{len(symbols)} "
+                            f"skipped_symbols={skipped_symbols} failed_symbols={failed_symbols} inserted_rows={total}"
+                        )
+                    continue
+                symbol_ranges = [(start_d, end_date)]
+
+        for start_d, end_d in symbol_ranges:
             for attempt in range(max_attempts):
                 try:
                     df = fetch_daily_yahoo_chart(sym, start_d, end_d)
@@ -130,17 +200,30 @@ ORDER BY symbol
                         total += insert_stock_ohlc(conn, df)
                     break
                 except Exception as e:
-                    print(f"[daily {mode}] {sym} {start_d}..{end_d} attempt={attempt+1}/{max_attempts} error={e}")
+                    log(f"[daily {mode}] {sym} {start_d}..{end_d} attempt={attempt+1}/{max_attempts} error={e}")
                     if attempt < max_attempts - 1:
                         sleep_backoff(attempt)
                     else:
-                        print(f"[daily {mode}] {sym} give up for now")
+                        symbol_failed = True
+                        log(f"[daily {mode}] {sym} give up for now")
 
         if sleep_sec:
             time.sleep(sleep_sec)
 
+        if symbol_failed:
+            failed_symbols += 1
+
+        if idx % PROGRESS_EVERY == 0 or idx == len(symbols):
+            log(
+                f"[daily {mode}] progress {idx}/{len(symbols)} "
+                f"skipped_symbols={skipped_symbols} failed_symbols={failed_symbols} inserted_rows={total}"
+            )
+
     engine.dispose()
-    print(f"[daily {mode}] Total inserted: {total}")
+    log(
+        f"[daily {mode}] Total inserted: {total}, "
+        f"skipped_symbols={skipped_symbols}, failed_symbols={failed_symbols}"
+    )
 
 
 def main():
@@ -149,7 +232,12 @@ def main():
     ap.add_argument("--symbols", default=None)
     ap.add_argument("--symbols-file", default=None)
     ap.add_argument("--start-date", default=None, help="YYYY-MM-DD for initial mode (default 2015-01-01)")
-    ap.add_argument("--sessions", type=int, default=180, help="Trading sessions window for missing mode")
+    ap.add_argument(
+        "--sessions",
+        type=int,
+        default=180,
+        help="Bootstrap trading sessions only for symbols with no existing daily rows in missing mode",
+    )
     ap.add_argument("--max-attempts", type=int, default=3)
     ap.add_argument("--sleep", type=float, default=0.0)
     args = ap.parse_args()
