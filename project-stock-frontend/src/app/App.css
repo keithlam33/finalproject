@@ -1,7 +1,12 @@
 .app-shell {
-  width: min(1320px, 95vw);
-  margin: 0 auto;
-  padding: 20px 0 28px;
+  width: 100%;
+  height: 100dvh;
+  margin: 0;
+  padding: 14px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: hidden;
 }
 
 .app-header {
@@ -9,22 +14,25 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 20px;
-  margin-bottom: 16px;
+  flex: 0 0 auto;
 }
 
 .app-header h1 {
   margin: 0;
-  font-size: 1.85rem;
+  font-size: 1.7rem;
   letter-spacing: 0.3px;
 }
 
-.app-header p {
-  margin: 6px 0 0;
-  color: var(--text-soft);
+.app-main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
 }
 
-.app-main {
-  min-height: 65vh;
+.app-main > * {
+  flex: 1;
+  min-width: 0;
 }
 
 .top-nav {
@@ -56,9 +64,16 @@
 .panel {
   border: 1px solid var(--line);
   border-radius: 20px;
-  padding: 18px;
+  padding: 14px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(247, 250, 255, 0.94));
   box-shadow: var(--shadow);
+}
+
+.dashboard-panel {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .panel-head {
@@ -67,6 +82,10 @@
   gap: 12px;
   align-items: flex-start;
   margin-bottom: 14px;
+}
+
+.panel-head--compact {
+  margin-bottom: 10px;
 }
 
 .panel-head h2 {
@@ -84,6 +103,23 @@
   flex-wrap: wrap;
   color: var(--text-soft);
   font-size: 0.92rem;
+}
+
+.panel-meta--compact {
+  justify-content: flex-end;
+  gap: 8px;
+  font-size: 0.84rem;
+}
+
+.panel-meta--compact span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.78);
+  white-space: nowrap;
 }
 
 .candle-meta-bar {
@@ -136,31 +172,32 @@
 }
 
 .candle-toolbar {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 96px;
+  align-items: start;
+  gap: 10px;
+  margin-bottom: 10px;
 }
 
 .candle-toolbar-main {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  flex: 1;
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  align-items: stretch;
+  gap: 8px;
   min-width: 0;
-  flex-wrap: wrap;
 }
 
 .candle-symbol-wrap {
-  min-width: 0;
+  min-width: 220px;
 }
 
 .symbol-combobox {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  min-width: 170px;
+  width: 100%;
+  min-width: 0;
+  min-height: 56px;
   padding: 8px 12px 8px 8px;
   border: 1px solid var(--line);
   border-radius: 14px;
@@ -211,17 +248,20 @@
 }
 
 .candle-inline-stats {
-  display: flex;
-  align-items: center;
+  display: grid;
+  grid-template-columns:
+    minmax(156px, 1.65fr)
+    minmax(108px, 1fr)
+    minmax(136px, 1.3fr)
+    repeat(5, minmax(88px, 0.92fr));
+  align-items: stretch;
   gap: 10px;
-  flex: 1;
   min-width: 0;
-  flex-wrap: wrap;
 }
 
 .candle-stat {
   min-width: 0;
-  padding: 8px 12px;
+  padding: 7px 10px;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--surface-muted);
@@ -239,14 +279,23 @@
 .candle-stat strong {
   display: block;
   color: var(--text-main);
-  font-size: 0.92rem;
+  font-size: 0.84rem;
   line-height: 1.25;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .candle-interval-field {
-  min-width: 110px;
+  min-width: 96px;
   flex-shrink: 0;
+  align-self: stretch;
+}
+
+.candle-interval-field select {
+  width: 100%;
+  min-width: 0;
+  min-height: 56px;
 }
 
 .symbol-suggest {
@@ -317,6 +366,8 @@
 }
 
 .chart-wrap {
+  flex: 1;
+  min-height: 0;
   border-radius: 16px;
   overflow: hidden;
   border: 1px solid var(--line);
@@ -331,6 +382,12 @@
 .heatmap-panel .panel-head h2,
 .heatmap-panel .panel-head p,
 .heatmap-panel .panel-meta {
+  color: #dbe5f4;
+}
+
+.heatmap-panel .panel-meta--compact span {
+  border-color: #2a3a59;
+  background: rgba(11, 18, 32, 0.42);
   color: #dbe5f4;
 }
 
@@ -367,6 +424,8 @@
 
 .heatmap-chart-wrap {
   position: relative;
+  flex: 1;
+  min-height: 0;
   border-radius: 14px;
   border: 1px solid #25314f;
   overflow: hidden;
@@ -375,6 +434,7 @@
 
 .heatmap-chart-wrap--full {
   width: 100%;
+  height: 100%;
 }
 
 .heatmap-hover-card {
@@ -626,6 +686,7 @@
 
 .loading-banner,
 .error-banner {
+  flex: 0 0 auto;
   border-radius: 10px;
   margin-bottom: 10px;
   padding: 8px 10px;
@@ -642,19 +703,44 @@
   background: #fae0e4;
 }
 
+@media (max-width: 1320px) {
+  .candle-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .candle-toolbar-main {
+    grid-template-columns: 220px minmax(0, 1fr);
+  }
+
+  .candle-inline-stats {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .candle-interval-field {
+    width: 140px;
+  }
+}
+
 @media (max-width: 860px) {
   .app-header {
     flex-direction: column;
     align-items: stretch;
   }
 
+  .app-header h1 {
+    font-size: 1.45rem;
+  }
+
+  .top-nav {
+    align-self: flex-end;
+  }
+
   .candle-toolbar {
-    flex-direction: column;
-    align-items: stretch;
+    grid-template-columns: 1fr;
   }
 
   .candle-toolbar-main {
-    align-items: stretch;
+    grid-template-columns: 1fr;
   }
 
   .candle-inline-stats {
@@ -662,8 +748,28 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .candle-symbol-wrap,
+  .candle-interval-field {
+    width: 100%;
+    min-width: 0;
+  }
+
   .quote-strip {
     grid-template-columns: repeat(2, minmax(120px, 1fr));
+  }
+
+  .panel-head--compact {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .panel-meta--compact {
+    justify-content: flex-start;
+  }
+
+  .chart-wrap,
+  .heatmap-chart-wrap {
+    min-height: 320px;
   }
 
   .heatmap-panel .panel-head {

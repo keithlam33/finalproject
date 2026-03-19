@@ -4,7 +4,7 @@ import type { EChartsOption } from 'echarts'
 import { getHeatmap } from '../../shared/api/stockApi'
 import type { HeatmapDto } from '../../shared/types/stock'
 
-const HEATMAP_POLL_MS = 15_000
+const HEATMAP_POLL_MS = 6_000
 const MAX_INDUSTRIES = 18
 
 interface HeatmapTreeNode {
@@ -478,13 +478,13 @@ export function HeatmapPage({ onOpenCandlestick }: HeatmapPageProps) {
   )
 
   return (
-    <section className="panel heatmap-panel">
-      <header className="panel-head">
+    <section className="panel dashboard-panel heatmap-panel">
+      <header className="panel-head panel-head--compact">
         <div>
           <h2>Heatmap</h2>
           <p>Top 18 industries by market cap. Hover for details, click a tile to open candlestick.</p>
         </div>
-        <div className="panel-meta">
+        <div className="panel-meta panel-meta--compact">
           <span>{updatedAt ? `Updated ${new Date(updatedAt).toLocaleTimeString()}` : 'Waiting for first load'}</span>
           <span>{shownStocks} stocks shown</span>
         </div>
@@ -548,7 +548,7 @@ export function HeatmapPage({ onOpenCandlestick }: HeatmapPageProps) {
           notMerge
           lazyUpdate
           onEvents={onEvents}
-          style={{ height: 860, width: '100%' }}
+          style={{ height: '100%', width: '100%' }}
         />
       </div>
     </section>

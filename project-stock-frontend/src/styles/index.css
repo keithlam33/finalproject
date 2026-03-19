@@ -17,9 +17,12 @@
   box-sizing: border-box;
 }
 
+html,
 body {
+  height: 100%;
   margin: 0;
   min-width: 320px;
+  min-height: 100dvh;
   font-family: 'Segoe UI Variable', Aptos, 'Trebuchet MS', sans-serif;
   color: var(--text-main);
   background: radial-gradient(circle at 10% 20%, var(--bg-accent), transparent 40%),
@@ -28,8 +31,11 @@ body {
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
 }
 
 #root {
-  min-height: 100vh;
+  height: 100%;
+  min-height: 100dvh;
+  overflow: hidden;
 }

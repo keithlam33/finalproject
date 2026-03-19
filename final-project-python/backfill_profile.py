@@ -4,14 +4,15 @@ import time
 import requests
 from sqlalchemy import text
 
-from backfill_utils import ensure_schema, get_engine, parse_symbols_arg, sleep_backoff
+from backfill_utils import ensure_schema, get_engine, load_stock_id_map, parse_symbols_arg, sleep_backoff
 
 
 UPSERT_PROFILE_SQL = text(
     """
-INSERT INTO stock_profile(symbol, company_name, industry, market_cap, logo, date_update)
-VALUES (:symbol, :company_name, :industry, :market_cap, :logo, CURRENT_DATE)
+INSERT INTO stock_profile(stock_id, symbol, company_name, industry, market_cap, logo, date_update)
+VALUES (:stock_id, :symbol, :company_name, :industry, :market_cap, :logo, CURRENT_DATE)
 ON CONFLICT (symbol) DO UPDATE SET
+  stock_id = EXCLUDED.stock_id,
   company_name = EXCLUDED.company_name,
   industry = EXCLUDED.industry,
   market_cap = EXCLUDED.market_cap,
@@ -87,6 +88,7 @@ def run(
             target_symbols = symbols
         else:
             target_symbols = load_active_symbols(conn, only_missing=only_missing)
+        stock_id_map = load_stock_id_map(conn, target_symbols)
 
     if not target_symbols:
         print("No symbols to process.")
@@ -135,12 +137,18 @@ def run(
             )
 
         row = {
+            "stock_id": stock_id_map.get(symbol),
             "symbol": symbol,
             "company_name": payload.get("companyName") or symbol,
             "industry": payload.get("industry") or "Unknown",
             "market_cap": payload.get("marketCap"),
             "logo": payload.get("logo"),
         }
+
+        if row["stock_id"] is None:
+            failed.append((symbol, "missing stock_id in stocks table"))
+            wait_for_rate_limit(started_at, sleep_sec)
+            continue
 
         if dry_run:
             print(f"[DRY-RUN] upsert {row['symbol']} ({row['company_name']})")

@@ -20,7 +20,10 @@ class ApiError extends Error {
 }
 
 async function requestJson<T>(url: string, signal?: AbortSignal): Promise<T> {
-  const response = await fetch(url, { signal })
+  const response = await fetch(url, {
+    signal,
+    cache: 'no-store',
+  })
   if (!response.ok) {
     const contentType = response.headers.get('content-type') ?? ''
     let message = `Request failed (${response.status})`

@@ -33,6 +33,7 @@ com\bootcamp\project_stock_data\ProjectStockDataApplication.class
 com\bootcamp\project_stock_data\exception\SysEx.class
 com\bootcamp\project_stock_data\service\QuoteCacheService.class
 com\bootcamp\project_stock_data\model\dto\YahooQuoteDTO.class
+com\bootcamp\project_stock_data\service\PriceUpdateService$LiveCandle.class
 com\bootcamp\project_stock_data\dto\CandlestickChartDto$CandlestickChartDtoBuilder.class
 com\bootcamp\project_stock_data\entity\StockOhlcEntity.class
 com\bootcamp\project_stock_data\service\impl\BackfillServiceimpl.class

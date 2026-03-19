@@ -18,7 +18,6 @@ function App() {
       <header className="app-header">
         <div>
           <h1>Stock Dashboard</h1>
-          <p>React + ECharts, windowed history, and debounced symbol queries.</p>
         </div>
         <TopNav activeTab={tab} onTabChange={setTab} />
       </header>

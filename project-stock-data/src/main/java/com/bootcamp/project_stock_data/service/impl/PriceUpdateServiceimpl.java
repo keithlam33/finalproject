@@ -167,4 +167,31 @@ public class PriceUpdateServiceimpl implements PriceUpdateService {
   public Long getLastMarketTime() {
     return this.lastMarketTime;
   }
+
+  @Override
+  public LiveCandle getCurrentCandle(String symbol) {
+    if (symbol == null) {
+      return null;
+    }
+
+    String key = symbol.trim();
+    if (key.isEmpty()) {
+      return null;
+    }
+
+    CandleBucket bucket = current.get(key);
+    if (bucket == null || bucket.open == null || bucket.high == null || bucket.low == null || bucket.close == null) {
+      return null;
+    }
+
+    LiveCandle live = new LiveCandle();
+    live.symbol = key;
+    live.ts = bucket.minuteStart;
+    live.open = bucket.open;
+    live.high = bucket.high;
+    live.low = bucket.low;
+    live.close = bucket.close;
+    live.volume = bucket.volume;
+    return live;
+  }
 }

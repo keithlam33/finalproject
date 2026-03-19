@@ -18,6 +18,17 @@ public interface PriceUpdateService {
     public Long volume;
   }
 
+  // Best-effort snapshot of the currently building 1m candle.
+  public static class LiveCandle {
+    public String symbol;
+    public long ts; // minuteStart epochSec
+    public Double open;
+    public Double high;
+    public Double low;
+    public Double close;
+    public Long volume;
+  }
+
   // Scheduler pulls provider once, then passes the response here to build 1m buckets, etc.
   void updateQuotes(YahooQuoteDTO resp);
 
@@ -30,4 +41,6 @@ public interface PriceUpdateService {
   String getLastMarketState();
 
   Long getLastMarketTime(); // epochSec
+
+  LiveCandle getCurrentCandle(String symbol);
 }

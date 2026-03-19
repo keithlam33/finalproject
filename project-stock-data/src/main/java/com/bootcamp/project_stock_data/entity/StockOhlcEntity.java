@@ -24,9 +24,12 @@ import lombok.Setter;
 @NoArgsConstructor
 @AllArgsConstructor
 public class StockOhlcEntity {
-    @Id
+  @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;
+
+  @Column(name = "stock_id", nullable = false)
+  private Long stockId;
 
   private String symbol;
 
@@ -44,8 +47,9 @@ public class StockOhlcEntity {
 
   @Column(name = "date_update")
   private LocalDateTime dateUpdate;
-   @ManyToOne
-  @JoinColumn(name="symbol", referencedColumnName = "symbol", insertable=false, updatable=false)
+
+  @ManyToOne
+  @JoinColumn(name = "stock_id", referencedColumnName = "id", insertable = false, updatable = false)
   @Setter
   private StockEntity stock;
 }

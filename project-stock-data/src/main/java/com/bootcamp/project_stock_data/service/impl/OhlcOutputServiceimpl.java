@@ -5,7 +5,9 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -54,8 +56,14 @@ public class OhlcOutputServiceimpl implements OhlcOutputService {
     priceUpdateService.forceFinalizeBefore(nowMinuteStart);
 
     List<FinalCandle> candles = priceUpdateService.drainFinalized();
+    Map<String, Long> stockIdBySymbol = loadActiveStockIdMap();
     for (FinalCandle c : candles) {
+      Long stockId = stockIdBySymbol.get(c.symbol);
+      if (stockId == null) {
+        continue;
+      }
       StockOhlcEntity e = new StockOhlcEntity();
+      e.setStockId(stockId);
       e.setSymbol(c.symbol);
       e.setDataType(c.dataType); // "1m"
       e.setTs(c.ts);             // minuteStart epochSec
@@ -132,7 +140,7 @@ public class OhlcOutputServiceimpl implements OhlcOutputService {
         if (base.size() < minutes)
           break;
 
-        StockOhlcEntity agg = aggregateWindow(symbol, targetDataType, ws, base);
+        StockOhlcEntity agg = aggregateWindow(s.getId(), symbol, targetDataType, ws, base);
         if (agg == null)
           break;
 
@@ -182,7 +190,7 @@ public class OhlcOutputServiceimpl implements OhlcOutputService {
       if (base == null || base.isEmpty())
         continue;
 
-      StockOhlcEntity daily = aggregateWindow(symbol, "1d", sessionStart, base);
+      StockOhlcEntity daily = aggregateWindow(s.getId(), symbol, "1d", sessionStart, base);
       if (daily == null)
         continue;
 
@@ -195,7 +203,7 @@ public class OhlcOutputServiceimpl implements OhlcOutputService {
   }
 
   private StockOhlcEntity aggregateWindow(
-      String symbol, String dataType, long windowStartEpochSec, List<StockOhlcEntity> baseAsc) {
+      Long stockId, String symbol, String dataType, long windowStartEpochSec, List<StockOhlcEntity> baseAsc) {
 
     StockOhlcEntity first = baseAsc.get(0);
     StockOhlcEntity last = baseAsc.get(baseAsc.size() - 1);
@@ -227,6 +235,7 @@ public class OhlcOutputServiceimpl implements OhlcOutputService {
     }
 
     StockOhlcEntity e = new StockOhlcEntity();
+    e.setStockId(stockId);
     e.setSymbol(symbol);
     e.setDataType(dataType);
     e.setTs(windowStartEpochSec);
@@ -237,5 +246,17 @@ public class OhlcOutputServiceimpl implements OhlcOutputService {
     e.setVolume(hasVol ? volSum : null);
     e.setDateUpdate(java.time.LocalDateTime.now());
     return e;
+  }
+
+  private Map<String, Long> loadActiveStockIdMap() {
+    List<StockEntity> active = stockRepository.findByStatusTrue();
+    Map<String, Long> out = new HashMap<>();
+    for (StockEntity stock : active) {
+      if (stock == null || stock.getId() == null || stock.getSymbol() == null) {
+        continue;
+      }
+      out.put(stock.getSymbol().trim(), stock.getId());
+    }
+    return out;
   }
 }

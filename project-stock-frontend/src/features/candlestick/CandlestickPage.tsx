@@ -8,7 +8,7 @@ import { INTERVAL_OPTIONS } from '../../shared/types/stock'
 
 const DEFAULT_WINDOW = 240
 const MIN_WINDOW = 40
-const CANDLE_POLL_MS = 10_000
+const CANDLE_POLL_MS = 6_000
 const SYMBOL_DEBOUNCE_MS = 300
 const MAX_SUGGESTIONS = 10
 
@@ -629,8 +629,10 @@ export function CandlestickPage({ selectedSymbol }: CandlestickPageProps) {
       if (event.key === 'Enter') {
         event.preventDefault()
 
-        if (symbolFocused && highlightIndex >= 0 && highlightIndex < suggestions.length) {
-          const pick = suggestions[highlightIndex]
+        if (symbolFocused && suggestions.length > 0) {
+          const pick = highlightIndex >= 0 && highlightIndex < suggestions.length
+            ? suggestions[highlightIndex]
+            : suggestions[0]
           selectSymbol(pick.symbol)
           setSymbolFocused(false)
           return
@@ -650,23 +652,17 @@ export function CandlestickPage({ selectedSymbol }: CandlestickPageProps) {
   )
 
   return (
-    <section className="panel">
-      <header className="panel-head">
+    <section className="panel dashboard-panel candlestick-panel">
+      <header className="panel-head panel-head--compact">
         <div>
           <h2>Candlestick</h2>
-          <p>
-            Latest candle updates every 10 seconds.
-            {interval === '15m' ? ' 15m candles only update when the candle closes (may look delayed).' : ''}
-          </p>
+          <p>Refresh every 6 seconds. Intraday bars keep a live in-progress candle from the Redis quote flow.</p>
+        </div>
+        <div className="panel-meta panel-meta--compact candle-head-meta">
+          <span>{snapshot?.marketTime ? `Updated ${new Date(snapshot.marketTime * 1000).toLocaleTimeString()}` : 'Waiting for first load'}</span>
+          <span>Visible window: {windowSize}</span>
         </div>
       </header>
-
-      <div className="panel-meta candle-meta-bar">
-        <span>{snapshot?.marketTime ? `Updated ${new Date(snapshot.marketTime * 1000).toLocaleTimeString()}` : 'Waiting for first load'}</span>
-        <span>Visible window: {windowSize}</span>
-        <span>{isAtRightEdge ? 'Following latest' : 'Historical view'}</span>
-        <span>Drag chart to pan history, use wheel to zoom</span>
-      </div>
 
       <div className="candle-toolbar">
         <div className="candle-toolbar-main">
@@ -725,7 +721,7 @@ export function CandlestickPage({ selectedSymbol }: CandlestickPageProps) {
           <div className="candle-inline-stats">
             <div className="candle-stat">
               <span>Name</span>
-              <strong>{displayCompany ?? symbol}</strong>
+              <strong title={displayCompany ?? symbol}>{displayCompany ?? symbol}</strong>
             </div>
             <div className="candle-stat">
               <span>Market Cap</span>
@@ -733,7 +729,7 @@ export function CandlestickPage({ selectedSymbol }: CandlestickPageProps) {
             </div>
             <div className="candle-stat">
               <span>Industry</span>
-              <strong>{displayProfile?.industry ?? '--'}</strong>
+              <strong title={displayProfile?.industry ?? '--'}>{displayProfile?.industry ?? '--'}</strong>
             </div>
             <div className="candle-stat">
               <span>Current</span>
@@ -782,7 +778,7 @@ export function CandlestickPage({ selectedSymbol }: CandlestickPageProps) {
           option={chartOption}
           lazyUpdate
           onEvents={onEvents}
-          style={{ height: 560, width: '100%' }}
+          style={{ height: '100%', width: '100%' }}
         />
       </div>
 

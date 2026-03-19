@@ -28,11 +28,14 @@ public class StockProfileEntity {
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;
 
+  @Column(name = "stock_id", nullable = false)
+  private Long stockId;
+
   @Column(nullable = false, unique = true)
   private String symbol;
 
   @OneToOne
-  @JoinColumn(name = "symbol", referencedColumnName = "symbol", insertable = false, updatable = false)
+  @JoinColumn(name = "stock_id", referencedColumnName = "id", insertable = false, updatable = false)
   private StockEntity stock;
 
   @Column(name = "company_name")

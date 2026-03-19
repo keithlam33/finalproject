@@ -25,6 +25,14 @@ def log(message: str) -> None:
     print(message, flush=True)
 
 
+def normalize_daily_ts_to_session_start_utc(ts_series: pd.Series) -> pd.Series:
+    raw_utc = pd.to_datetime(ts_series, unit="s", utc=True, errors="coerce")
+    trade_dates = raw_utc.dt.strftime("%Y-%m-%d")
+    session_open_ny = pd.to_datetime(trade_dates + " 09:30:00").dt.tz_localize("America/New_York")
+    session_open_utc = session_open_ny.dt.tz_convert("UTC")
+    return session_open_utc.map(lambda x: int(x.timestamp()) if pd.notna(x) else pd.NA).astype("Int64")
+
+
 def last_trading_schedule(n_sessions: int, lookback_days: int = 365) -> pd.DataFrame:
     end = pd.Timestamp.now("UTC")
     start = end - pd.Timedelta(days=lookback_days)
@@ -91,7 +99,7 @@ def fetch_daily_yahoo_chart(symbol: str, start_date: date, end_date: date):
         return None
 
     quote = result["indicators"]["quote"][0]
-    ts = pd.Series(timestamps, dtype="int64")
+    ts = normalize_daily_ts_to_session_start_utc(pd.Series(timestamps, dtype="int64"))
 
     df = pd.DataFrame(
         {
