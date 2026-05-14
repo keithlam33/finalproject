@@ -29,7 +29,7 @@ This project is a stock dashboard system that provides candlestick charts, heatm
 ![HeatMap](./images/heatmap.png)
 ![Candlestick Chart](./images/candlestick.png)
 
-- Demo video: [finalproject1.mp4](./demovideo/finalproject1.mp4)
+- Demo video: https://youtu.be/oAe-F-R1l14
 
 ## Data Flow
 1. Scheduler pulls latest quotes from the external provider
